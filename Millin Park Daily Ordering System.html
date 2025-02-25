@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日订购系统</title>
+    <link rel="manifest" href="manifest.json">
+    <script>
+        // 注册 Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker 注册成功');
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker 注册失败: ', err);
+                    });
+            });
+        }
+    </script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 16px;
+            background: #f5f5f5;
+        }
+        
+        .page {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            display: none;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        .cover {
+            display: block;
+            text-align: center;
+            padding: 40px;
+        }
+        .supplier-header {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #333;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f5f5f5;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .show-all-button {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .supplier-select {
+            display: flex;
+            overflow-x: auto;
+            padding: 10px;
+            background: #fff;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .supplier-select button {
+            flex: 0 0 auto;
+            margin: 0 5px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #f0f0f0;
+            cursor: pointer;
+        }
+        .supplier-select button.active {
+            background: #4CAF50;
+            color: white;
+        }
+        .supplier-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .supplier-info h3 {
+            margin: 0;
+        }
+
+        .supplier-edit {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .supplier-edit input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .supplier-actions button {
+            margin-left: 10px;
+            padding: 5px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+
+        }.date-display {
+            font-size: 28px;
+            margin: 30px 0;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .main-button {
+            padding: 12px 24px;
+            font-size: 18px;
+            width: 90%;
+            max-width: none;
+            background: #4CAF50;  
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px auto;
+        }
+        
+        .back-button {
+            position: fixed;
+            left: 20px;
+            top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            background: #666;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+        }
+        
+        .category-list {
+            width: 100%;
+            position: fixed;
+            left: 0;
+            top: 140px;
+            height: auto;
+            max-height: 60px;
+            background: #f0f0f0;
+            padding: 10px;
+            overflow-x: auto;
+            white-space: nowrap;
+            z-index: 90;
+            display: flex;
+            gap: 10px;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+        }
+
+        .product-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .quantity-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .unit-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .category-list::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+        
+        .product-list {
+            margin-top: 220px;
+            padding: 10px;
+        }
+
+        .product-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: move;
+            user-select: none;
+        }
+
+        .product-item.dragging {
+            opacity: 0.5;
+            background: #e9e9e9;
+            border: 2px dashed #666;
+        }
+
+        .product-container {
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .settings-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .settings-section h3 {
+            color: #333;
+            margin-top: 0;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #4CAF50;
+        }
+
+        .supplier-edit {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .supplier-edit input {
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            transition: border-color 0.3s;
+        }
+
+        .supplier-edit input:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+
+        .supplier-edit button {
+            background: #2196F3;
+        }
+
+        .category-button {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .category-button.active {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        
+        .cart-float {
+            position: fixed;
+            right: 10px;
+            bottom: 70px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            z-index: 99;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .cart-item button {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .global-all-button {
+            position: fixed;
+            top: 140px;
+            right: 10px;
+            padding: 8px 15px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            z-index: 100;
+            font-size: 14px;
+        }
+
+        .search-container {
+            position: fixed;
+            top: 70px;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            background: white;
+            z-index: 95;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .search-input {
+            width: 90%;
+            padding: 10px;
+            margin: 0 auto;
+            display: block;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        /* 调整商品列表的上边距以适应搜索框 */
+        .category-list {
+            top: 140px;
+        }
+        
+        .product-list {
+            margin-top: 200px;
+        }
+        
+        .complete-button {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 95%;
+            background: #ff4444;
+            z-index: 99;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 封面页 -->
+    <div class="page cover" id="coverPage">
+        <h1>Daily Ordering System</h1>
+        <h2>每日订购系统</h2>
+        <div class="date-display" id="dateDisplay"></div>
+        <button class="main-button" onclick="showOrderPage()">开始订购</button>
+        <button class="main-button" onclick="showProductLibrary()">商品库</button>
+    </div>
+
+    <!-- 供应商选择页 -->
+    <div class="page" id="supplierSelectPage">
+        <button class="back-button" onclick="showCoverPage()">返回</button>
+        <h2 style="text-align: center; margin-top: 40px;">请选择供应商</h2>
+        <button class="main-button" onclick="selectSupplier('A')">A供应商</button>
+        <button class="main-button" onclick="selectSupplier('B')">B供应商</button>
+    </div>
+
+    <!-- 订购页 -->
+    <div class="page" id="orderPage">
+        <button class="back-button" onclick="showSupplierSelectPage()">返回</button>
+        <button class="add-product-button" onclick="showAddProductModal()">+</button>
+        <div class="supplier-header" id="currentSupplierDisplay"></div>
+
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="搜索商品..." oninput="searchProducts()">
+        </div>
+
+        <button class="global-all-button" onclick="showAllProducts()">全部商品</button>
+        
+        <div class="category-list">
+            <!-- 商品分类将通过JavaScript动态加载 -->
+        </div>
+        
+        <div class="product-list">
+            <!-- 商品列表将通过JavaScript动态加载 -->
+        </div>
+        
+        <button class="cart-float" onclick="showCart()">购物车</button>
+        <button class="main-button complete-button" onclick="completeOrder()">完成订购</button>
+    </div>
+    <!-- 结算页 -->
+        <div class="page" id="checkoutPage">
+            <button class="back-button" onclick="showOrderPage()">返回</button>
+            <h2>订单确认</h2>
+            <div class="order-header">
+                <div class="date-display" id="orderDateDisplay"></div>
+                <div class="order-supplier" id="orderSupplierDisplay"></div>
+            </div>
+            <div class="order-summary" id="orderSummary"></div>
+            <button class="main-button" onclick="copyOrder()">确认并复制订单</button>
+        </div>
+    
+        <!-- 商品库页面 -->
+        <div class="page" id="productLibraryPage">
+            <button class="back-button" onclick="showCoverPage()">返回</button>
+            <h2>商品库管理</h2>
+            
+            <!-- 供应商筛选 -->
+            <div class="supplier-select">
+                <button onclick="filterLibraryBySupplier('A')" id="librarySupplierA">A供应商</button>
+                <button onclick="filterLibraryBySupplier('B')" id="librarySupplierB">B供应商</button>
+                <button onclick="filterLibraryBySupplier('all')" id="librarySupplierAll">全部商品</button>
+            </div>
+            
+            <div id="supplierContent">
+                <!-- 供应商内容将通过JavaScript动态加载 -->
+            </div>
+            
+            <div class="form-group">
+                <h3>添加商品</h3>
+                <input type="text" id="newProductName" placeholder="商品名称">
+                <select id="newProductCategory">
+                    <option value="">选择已有分类</option>
+                </select>
+                <input type="text" id="newCategoryInput" placeholder="或输入新分类">
+                <select id="newProductSupplier">
+                    <option value="A">A供应商</option>
+                    <option value="B">B供应商</option>
+                </select>
+                <button class="main-button" onclick="addNewProduct()">添加商品</button>
+            </div>
+            
+            <div class="form-group">
+                <h3>Excel导入导出</h3>
+                <input type="file" id="excelFile" accept=".xlsx,.xls">
+                <button class="main-button" onclick="importExcel()">导入Excel</button>
+                <button class="main-button" onclick="exportExcel()">导出Excel</button>
+            </div>
+            
+            <div id="productLibraryList"></div>
+    
+            <div class="settings-section">
+                <h3>供应商设置</h3>
+                <div class="supplier-edit">
+                    <input type="text" id="supplierA" placeholder="供应商A名称" value="A供应商">
+                    <input type="text" id="supplierB" placeholder="供应商B名称" value="B供应商">
+                    <button class="main-button" onclick="saveSupplierNames()">保存供应商名称</button>
+                </div>
+            </div>        
+    
+            <div class="form-group">
+                <h3>系统维护</h3>
+                <button class="main-button" onclick="resetLocalStorage()" style="background: #ff4444;">重置本地存储</button>
+            </div>
+        </div>
+    
+        <!-- 购物车弹窗 -->
+        <div class="modal" id="cartModal">
+            <div class="modal-content">
+                <h3>购物车</h3>
+                <div id="cartItems"></div>
+                <button class="main-button" onclick="hideCart()">关闭</button>
+            </div>
+        </div>
+    
+        <!-- 添加商品弹窗 -->
+        <div class="modal" id="addProductModal">
+            <div class="modal-content">
+                <h3>添加商品</h3>
+                <div class="form-group">
+                    <input type="text" id="quickAddProductName" placeholder="商品名称">
+                    <select id="quickAddProductCategory">
+                        <option value="">选择分类</option>
+                    </select>
+                    <input type="text" id="quickAddCategoryInput" placeholder="或输入新分类">
+                    <select id="quickAddSupplier">
+                        <option value="A">A供应商</option>
+                        <option value="B">B供应商</option>
+                    </select>
+                </div>
+                <button class="main-button" onclick="quickAddProduct()">添加</button>
+                <button class="main-button" onclick="hideAddProductModal()">取消</button>
+            </div>
+        </div>
+
+        <script>
+        // 商品数据结构
+        let products = {};
+        let cart = {};
+        let categoryOrder = [];
+        let currentSupplier = 'all';
+        let currentLibrarySupplier = 'all';
+        let productOrder = {};
+
+        // 页面加载时初始化
+        window.onload = function() {
+            updateDate();
+            loadProductsFromLocal();
+            loadSupplierNames(); 
+            loadCartFromLocal();
+        }
+
+        // 保存供应商名称
+    function saveSupplierNames() {
+        const nameA = document.getElementById('supplierA').value.trim();
+        const nameB = document.getElementById('supplierB').value.trim();
+        
+        if (!nameA || !nameB) {
+            alert('供应商名称不能为空');
+            return;
+        }
+        
+        supplierNames = {
+            'A': nameA,
+            'B': nameB
+        };
+        
+        localStorage.setItem('supplierNames', JSON.stringify(supplierNames));
+        updateSupplierDisplay();
+        alert('供应商名称已更新');
+    }
+
+    // 加载供应商名称
+    function loadSupplierNames() {
+        const saved = localStorage.getItem('supplierNames');
+        if (saved) {
+            supplierNames = JSON.parse(saved);
+            document.getElementById('supplierA').value = supplierNames['A'];
+            document.getElementById('supplierB').value = supplierNames['B'];
+            updateSupplierDisplay();
+        }
+    }
+
+    // 更新界面上的供应商名称显示
+    function updateSupplierDisplay() {
+        // 更新供应商选择页面的按钮
+        document.querySelector('[onclick="selectSupplier(\'A\')"]').textContent = supplierNames['A'];
+        document.querySelector('[onclick="selectSupplier(\'B\')"]').textContent = supplierNames['B'];
+        
+        // 更新商品库页面的供应商筛选按钮
+        document.getElementById('librarySupplierA').textContent = supplierNames['A'];
+        document.getElementById('librarySupplierB').textContent = supplierNames['B'];
+        
+        // 如果当前正在显示供应商名称，也更新它
+        if (currentSupplier !== 'all') {
+            document.getElementById('currentSupplierDisplay').textContent = supplierNames[currentSupplier];
+            document.getElementById('orderSupplierDisplay').textContent = supplierNames[currentSupplier];
+        }
+    }
+
+
+        // 显示当前日期
+        function updateDate() {
+            const now = new Date();
+            const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${days[now.getDay()]}`;
+            document.getElementById('dateDisplay').textContent = dateStr;
+            document.getElementById('orderDateDisplay').textContent = dateStr;
+        }
+
+        // 页面切换函数
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.style.display = 'none';
+            });
+            document.getElementById(pageId).style.display = 'block';
+        }
+
+        function showOrderPage() {
+            showSupplierSelectPage();
+        }
+
+        function showSupplierSelectPage() {
+            showPage('supplierSelectPage');
+        }
+
+        function showCoverPage() {
+            showPage('coverPage');
+            cart = {}; // 清空购物车
+        }
+
+        function selectSupplier(supplier) {
+            currentSupplier = supplier;
+            document.getElementById('currentSupplierDisplay').textContent = supplierNames[supplier];
+            document.getElementById('orderSupplierDisplay').textContent = supplierNames[supplier];
+            showPage('orderPage');
+            loadCategories();
+        }
+
+        // 商品分类加载
+        function loadCategories() {
+            const categoryList = document.querySelector('.category-list');
+            categoryList.innerHTML = '';
+            
+            const categories = categoryOrder.length > 0 ? 
+                categoryOrder.filter(cat => {
+                    if (currentSupplier === 'all') return true;
+                    return products[cat].some(product => product.supplier === currentSupplier);
+                }) : 
+                Object.keys(products);
+            
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'category-button';
+                button.onclick = () => showProducts(category);
+                button.textContent = category;
+                categoryList.appendChild(button);
+            });
+
+            // 默认显示第一个分类的商品
+            if (categories.length > 0) {
+                showProducts(categories[0]);
+            }
+        }
+
+        // 显示指定分类的商品
+        function showProducts(category) {
+            document.querySelectorAll('.category-button').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent === category) {
+                    btn.classList.add('active');
+                }
+            });
+
+            const productList = document.querySelector('.product-list');
+            productList.innerHTML = '';
+
+            if (products[category]) {
+                let items = products[category]
+                    .filter(product => currentSupplier === 'all' || product.supplier === currentSupplier);
+                    
+                // 根据保存的顺序排序
+                if (productOrder[category]) {
+                    items.sort((a, b) => {
+                        const indexA = productOrder[category].indexOf(a.id);
+                        const indexB = productOrder[category].indexOf(b.id);
+                        return indexA - indexB;
+                    });
+                }
+
+                items.forEach(product => {
+                    const div = document.createElement('div');
+                    div.className = 'product-item';
+                    div.innerHTML = `
+                        <span class="product-name">${product.name} (${supplierNames[product.supplier]}供应商)</span>
+                        <div class="product-controls">
+                            <input type="number" class="quantity-input" id="qty_${product.id}" min="1" value="${cart[product.id]?.quantity || ''}">
+                            <input type="text" class="unit-input" id="unit_${product.id}" placeholder="单位" value="${cart[product.id]?.unit || ''}">
+                            <button class="main-button" onclick="addToCart('${product.id}', '${product.name}')">订购</button>
+                        </div>
+                    `;
+                    productList.appendChild(div);
+                });
+            }
+        }
+
+        // 显示所有商品
+        function showAllProducts() {
+            const productList = document.querySelector('.product-list');
+            productList.innerHTML = '';
+
+            // 移除所有分类按钮的激活状态
+            document.querySelectorAll('.category-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            Object.entries(products).forEach(([category, items]) => {
+                const categoryTitle = document.createElement('h3');
+                categoryTitle.textContent = category;
+                categoryTitle.style.margin = '20px 0 10px';
+                categoryTitle.style.padding = '10px';
+                categoryTitle.style.backgroundColor = '#f5f5f5';
+                categoryTitle.style.borderRadius = '5px';
+                productList.appendChild(categoryTitle);
+
+                items.forEach(product => {
+                    const div = document.createElement('div');
+                    div.className = 'product-item';
+                    div.innerHTML = `
+                        <span class="product-name">${product.name} (${product.supplier}供应商)</span>
+                        <div class="product-controls">
+                            <input type="number" class="quantity-input" id="qty_${product.id}" min="1" value="${cart[product.id]?.quantity || ''}">
+                            <input type="text" class="unit-input" id="unit_${product.id}" placeholder="单位" value="${cart[product.id]?.unit || ''}">
+                            <button class="main-button" onclick="addToCart('${product.id}', '${product.name}')">订购</button>
+                        </div>
+                    `;
+                    productList.appendChild(div);
+                });
+            });
+        }
+
+        function searchProducts() {
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            const productList = document.querySelector('.product-list');
+            productList.innerHTML = '';
+
+            if (!searchTerm) {
+                // 如果搜索框为空，显示当前分类的商品
+                const activeCategory = document.querySelector('.category-button.active');
+                if (activeCategory) {
+                    showProducts(activeCategory.textContent);
+                }
+                return;
+            }
+
+            // 搜索所有分类中的商品
+            Object.entries(products).forEach(([category, items]) => {
+                const matchedItems = items.filter(product => 
+                    (currentSupplier === 'all' || product.supplier === currentSupplier) &&
+                    product.name.toLowerCase().includes(searchTerm)
+                );
+
+                if (matchedItems.length > 0) {
+                    const categoryTitle = document.createElement('h3');
+                    categoryTitle.textContent = category;
+                    categoryTitle.style.margin = '20px 0 10px';
+                    categoryTitle.style.padding = '10px';
+                    categoryTitle.style.backgroundColor = '#f5f5f5';
+                    categoryTitle.style.borderRadius = '5px';
+                    productList.appendChild(categoryTitle);
+
+                    matchedItems.forEach(product => {
+                        const div = document.createElement('div');
+                        div.className = 'product-item';
+                        div.innerHTML = `
+                            <span class="product-name">${product.name}</span>
+                            <div class="product-controls">
+                                <input type="number" class="quantity-input" id="qty_${product.id}" min="1" value="${cart[product.id]?.quantity || ''}">
+                                <input type="text" class="unit-input" id="unit_${product.id}" placeholder="单位" value="${cart[product.id]?.unit || ''}">
+                                <button class="main-button" onclick="addToCart('${product.id}', '${product.name}')">订购</button>
+                            </div>
+                        `;
+                        productList.appendChild(div);
+                    });
+                }
+            });
+        }
+
+        // 购物车相关函数
+        function addToCart(productId, productName) {
+            const quantity = parseInt(document.getElementById(`qty_${productId}`).value);
+            const unit = document.getElementById(`unit_${productId}`).value.trim();
+            
+            if (quantity < 1) {
+                alert('请输入有效的数量');
+                return;
+            }
+            if (!unit) {
+                alert('请输入单位');
+                return;
+            }
+            
+            cart[productId] = {
+                name: productName,
+                quantity: quantity,
+                unit: unit,
+                supplier: findProductSupplier(productId)
+            };
+            
+            // 修改订购按钮样式
+            const button = document.querySelector(`button[onclick="addToCart('${productId}', '${productName}')"]`);
+            if (button) {
+                button.style.backgroundColor = '#FF8C00';
+            }
+            
+            alert('已添加到购物车');
+        }
+
+        function findProductSupplier(productId) {
+            for (const category in products) {
+                const product = products[category].find(p => p.id === productId);
+                if (product) return product.supplier;
+            }
+            return '';
+        }
+
+        function showCart() {
+            const cartModal = document.getElementById('cartModal');
+            const cartItems = document.getElementById('cartItems');
+            cartItems.innerHTML = '';
+            
+            if (Object.keys(cart).length === 0) {
+                cartItems.innerHTML = '<p>购物车是空的</p>';
+                cartModal.style.display = 'block';
+                return;
+            }
+
+            // 按供应商分组显示商品
+            const groupedItems = {
+                'A': [],
+                'B': []
+            };
+
+            Object.entries(cart).forEach(([id, item]) => {
+                if (item.supplier) {
+                    groupedItems[item.supplier].push({...item, id});
+                }
+            });
+
+            ['A', 'B'].forEach(supplier => {
+                if (groupedItems[supplier].length > 0) {
+                    const supplierDiv = document.createElement('div');
+                    supplierDiv.innerHTML = `<h4 style="margin: 15px 0 10px; color: #666;">${supplierNames[supplier]}</h4>`;
+                    cartItems.appendChild(supplierDiv);
+
+                    groupedItems[supplier].forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'cart-item';
+                        div.innerHTML = `
+                            <span>${item.name}</span>
+                            <span>${item.quantity}${item.unit}</span>
+                            <button onclick="removeFromCart('${item.id}')">删除</button>
+                        `;
+                        cartItems.appendChild(div);
+                    });
+                }
+            });
+            
+            cartModal.style.display = 'block';
+        }
+
+        function hideCart() {
+            document.getElementById('cartModal').style.display = 'none';
+        }
+
+        function removeFromCart(productId) {
+            delete cart[productId];
+            showCart();
+        }
+
+        // 订单完成和复制
+        function completeOrder() {
+            if (Object.keys(cart).length === 0) {
+                alert('购物车是空的，请先添加商品');
+                return;
+            }
+
+            const now = new Date();
+            now.setDate(now.getDate() + 1); // 设置为明天的日期
+            const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+            
+            let orderText = `【${dateStr}】${supplierNames[currentSupplier]}订单\n\n`;
+            
+            // 只显示当前供应商的商品
+            Object.values(cart)
+                .filter(item => item.supplier === currentSupplier)
+                .forEach(item => {
+                    orderText += `${item.name} x ${item.quantity}${item.unit}\n`;
+                });
+            
+            document.getElementById('orderSummary').innerText = orderText;
+            showPage('checkoutPage');
+        }
+
+        function copyOrder() {
+            const orderText = document.getElementById('orderSummary').innerText;
+            
+            // 创建临时文本区域
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = orderText;
+            document.body.appendChild(tempTextArea);
+            
+            // 选择并复制文本
+            tempTextArea.select();
+            document.execCommand('copy');
+            
+            // 移除临时文本区域
+            document.body.removeChild(tempTextArea);
+            
+            alert('订单已复制到剪贴板');
+            saveCartToLocal();
+            
+            // 清空购物车但保留商品的数量和单位
+            Object.keys(cart).forEach(productId => {
+                const quantity = cart[productId].quantity;
+                const unit = cart[productId].unit;
+                const qtyInput = document.getElementById(`qty_${productId}`);
+                const unitInput = document.getElementById(`unit_${productId}`);
+                if (qtyInput) qtyInput.value = quantity;
+                if (unitInput) unitInput.value = unit;
+            });
+            cart = {}; // 清空购物车
+            
+            showCoverPage();
+        }
+
+        function saveCartToLocal() {
+            localStorage.setItem('lastCart', JSON.stringify(cart));
+        }
+
+        function loadCartFromLocal() {
+            const savedCart = localStorage.getItem('lastCart');
+            if (savedCart) {
+                cart = JSON.parse(savedCart);
+            }
+        }
+
+        // 商品库管理功能
+        let supplierNames = {
+            'A': 'A供应商',
+            'B': 'B供应商'
+        };
+
+        function showProductLibrary() {
+            showPage('productLibraryPage');
+            updateProductLibrary();
+            updateCategorySelect();
+        }
+
+        function updateProductLibrary() {
+            const libraryList = document.getElementById('productLibraryList');
+            libraryList.innerHTML = '';
+
+            // 更新供应商按钮状态
+            document.querySelectorAll('.supplier-select button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`librarySupplier${currentLibrarySupplier === 'all' ? 'All' : currentLibrarySupplier}`).classList.add('active');
+
+            Object.entries(products).forEach(([category, items]) => {
+                let filteredItems = items.filter(item => 
+                    currentLibrarySupplier === 'all' || item.supplier === currentLibrarySupplier
+                );
+
+                // 根据保存的顺序排序
+                if (productOrder[category]) {
+                    filteredItems.sort((a, b) => {
+                        const indexA = productOrder[category].indexOf(a.id);
+                        const indexB = productOrder[category].indexOf(b.id);
+                        return indexA - indexB;
+                    });
+                }
+
+                if (filteredItems.length > 0) {
+                    const categoryDiv = document.createElement('div');
+                    categoryDiv.innerHTML = `
+                        <h3 style="margin: 20px 0 10px;">${category}</h3>
+                    `;
+                    
+                    const container = document.createElement('div');
+                    container.className = 'product-container';
+                    container.setAttribute('data-category', category);
+                    
+                    filteredItems.forEach(product => {
+                        const productDiv = document.createElement('div');
+                        productDiv.className = 'product-item';
+                        productDiv.setAttribute('data-id', product.id);
+                        productDiv.innerHTML = `
+                            <span class="product-name">${product.name} (${supplierNames[product.supplier]})</span>
+                            <div class="product-controls">
+                                <button onclick="editProduct('${product.id}')">编辑</button>
+                                <button onclick="deleteProduct('${product.id}')">删除</button>
+                            </div>
+                        `;
+                        container.appendChild(productDiv);
+                    });
+                    
+                    libraryList.appendChild(categoryDiv);
+                    libraryList.appendChild(container);
+                    initDragAndDrop(container);
+                }
+            });
+        }
+
+        function filterLibraryBySupplier(supplier) {
+            currentLibrarySupplier = supplier;
+            updateProductLibrary();
+        }
+
+        function updateCategorySelect() {
+            const categorySelects = ['newProductCategory', 'quickAddProductCategory'];
+            categorySelects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                select.innerHTML = '<option value="">选择已有分类</option>';
+                Object.keys(products).forEach(category => {
+                    select.innerHTML += `<option value="${category}">${category}</option>`;
+                });
+            });
+        }
+
+        function addNewProduct() {
+            const name = document.getElementById('newProductName').value.trim();
+            let category = document.getElementById('newProductCategory').value;
+            const newCategory = document.getElementById('newCategoryInput').value.trim();
+            const supplier = document.getElementById('newProductSupplier').value;
+
+            if (!name) {
+                alert('请输入商品名称');
+                return;
+            }
+
+            if (!category && !newCategory) {
+                alert('请选择或输入分类');
+                return;
+            }
+
+            if (newCategory) {
+                category = newCategory;
+            }
+
+            // 检查是否存在重复商品
+            let isDuplicate = false;
+            Object.values(products).forEach(items => {
+                if (items.some(item => 
+                    item.name === name && 
+                    item.supplier === supplier
+                )) {
+                    isDuplicate = true;
+                }
+            });
+
+            if (isDuplicate) {
+                alert('该供应商已存在相同名称的商品！');
+                return;
+            }
+
+            if (!products[category]) {
+                products[category] = [];
+                categoryOrder.push(category);
+            }
+
+            const id = Date.now().toString();
+            products[category].push({
+                id,
+                name,
+                supplier
+            });
+
+            saveProductsToLocal();
+            updateProductLibrary();
+            updateCategorySelect();
+            
+            // 清空输入
+            document.getElementById('newProductName').value = '';
+            document.getElementById('newProductCategory').value = '';
+            document.getElementById('newCategoryInput').value = '';
+            
+            alert('商品添加成功');
+        }
+
+        function deleteProduct(productId) {
+            if (!confirm('确定要删除这个商品吗？')) return;
+
+            for (const category in products) {
+                products[category] = products[category].filter(p => p.id !== productId);
+                if (products[category].length === 0) {
+                    delete products[category];
+                    categoryOrder = categoryOrder.filter(c => c !== category);
+                }
+            }
+
+            saveProductsToLocal();
+            updateProductLibrary();
+            updateCategorySelect();
+        }
+
+        // 添加排序相关函数
+        function initDragAndDrop(container) {
+            const items = container.querySelectorAll('.product-item');
+            
+            items.forEach(item => {
+                item.draggable = true;
+                
+                item.addEventListener('dragstart', () => {
+                    item.classList.add('dragging');
+                });
+                
+                item.addEventListener('dragend', () => {
+                    item.classList.remove('dragging');
+                    saveProductOrder(container);
+                });
+            });
+            
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                const afterElement = getDragAfterElement(container, e.clientY);
+                const draggable = document.querySelector('.dragging');
+                if (afterElement) {
+                    container.insertBefore(draggable, afterElement);
+                } else {
+                    container.appendChild(draggable);
+                }
+            });
+        }
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.product-item:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        // 修改商品库中的排序保存函数
+        function saveProductOrder(container) {
+            const category = container.getAttribute('data-category');
+            const items = container.querySelectorAll('.product-item');
+            productOrder[category] = Array.from(items).map(item => item.getAttribute('data-id'));
+            saveProductsToLocal();
+            
+            // 如果当前在订购页面，更新显示
+            if (document.getElementById('orderPage').style.display === 'block') {
+                showProducts(category);
+            }
+        }
+
+        // 本地存储功能
+        function saveProductsToLocal() {
+            localStorage.setItem('products', JSON.stringify(products));
+            localStorage.setItem('categoryOrder', JSON.stringify(categoryOrder));
+            localStorage.setItem('productOrder', JSON.stringify(productOrder));
+        }
+
+        function loadProductsFromLocal() {
+            const savedProducts = localStorage.getItem('products');
+            const savedCategoryOrder = localStorage.getItem('categoryOrder');
+            const savedProductOrder = localStorage.getItem('productOrder');
+            
+            if (savedProducts) {
+                products = JSON.parse(savedProducts);
+            }
+            
+            if (savedCategoryOrder) {
+                categoryOrder = JSON.parse(savedCategoryOrder);
+            }
+
+            if (savedProductOrder) {
+                productOrder = JSON.parse(savedProductOrder);
+            }
+        }
+
+        function resetLocalStorage() {
+            if (confirm('确定要重置所有数据吗？这将清空所有商品信息！')) {
+                localStorage.clear();
+                products = {};
+                categoryOrder = [];
+                cart = {};
+                updateProductLibrary();
+                updateCategorySelect();
+                alert('数据已重置');
+            }
+        }
+
+        // Excel导入导出功能
+        function importExcel() {
+            const file = document.getElementById('excelFile').files[0];
+            if (!file) {
+                alert('请选择Excel文件');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+                jsonData.forEach(row => {
+                    if (!row.category || !row.name || !row.supplier) return;
+
+                    if (!products[row.category]) {
+                        products[row.category] = [];
+                        categoryOrder.push(row.category);
+                    }
+
+                    products[row.category].push({
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                        name: row.name,
+                        supplier: row.supplier
+                    });
+                });
+
+                saveProductsToLocal();
+                updateProductLibrary();
+                updateCategorySelect();
+                alert('导入成功');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function exportExcel() {
+            const exportData = [];
+            Object.entries(products).forEach(([category, items]) => {
+                items.forEach(product => {
+                    exportData.push({
+                        category: category,
+                        name: product.name,
+                        supplier: product.supplier
+                    });
+                });
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "商品列表");
+            XLSX.writeFile(wb, "商品库导出.xlsx");
+        }
+        </script>
+    </body>
+</html>
