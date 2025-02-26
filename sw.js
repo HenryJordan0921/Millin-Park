@@ -1,6 +1,6 @@
 const CACHE_NAME = 'ordering-system-v1';
 const urlsToCache = [
-    'Millin Park Daily Ordering System.html',
+    'index.html',
     'manifest.json'
 ];
 
